@@ -19,7 +19,7 @@ button, label { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, label:has(input:focus-visible) { outline: 3px solid rgba(229, 141, 128, .45); outline-offset: 3px; }
 
 .ninar-shell { position: relative; background: radial-gradient(circle at 10% 5%, rgba(255, 233, 224, .72), transparent 28rem), radial-gradient(circle at 92% 23%, rgba(235, 226, 247, .58), transparent 31rem), #fcf8f4; }
-.app-header { position: sticky; top: 0; z-index: 40; isolation: isolate; margin: -1.5rem -1.25rem 0; padding: 1.15rem 1.25rem .75rem; background: linear-gradient(180deg, rgba(252, 248, 244, .98) 0%, rgba(252, 248, 244, .9) 72%, rgba(252, 248, 244, 0) 100%); backdrop-filter: blur(16px); box-shadow: 0 8px 20px rgba(68, 59, 85, .045); }
+.app-header { position: sticky; top: 0; z-index: 40; isolation: isolate; margin: -1.5rem -1.25rem 0; padding: 1.15rem 1.25rem .75rem; background: transparent; }
 .ninar-orb { position: absolute; border-radius: 999px; pointer-events: none; filter: blur(2px); opacity: .38; }
 .ninar-orb-coral { width: 19rem; height: 19rem; right: -11rem; top: 33rem; background: #ffe5d8; }
 .ninar-orb-lilac { width: 14rem; height: 14rem; left: -9rem; bottom: 8rem; background: #e9ddf4; }
