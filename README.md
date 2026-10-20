@@ -79,11 +79,11 @@ A EC2 recebe uma IAM Instance Profile com menor privilégio e IMDSv2 obrigatóri
 
 ## Deploy automatizado no EC2 com Caddy
 
-Para um servidor EC2 Amazon Linux, o repositório inclui um alvo separado em
-[`docker-compose.production.yml`](./docker-compose.production.yml). Ele não
-inicia LocalStack: usa S3/SQS reais, mantém Postgres/Redis/inference privados e
-expõe web e API somente em `127.0.0.1`. O Caddy instalado no host termina o
-HTTPS e encaminha para essas duas portas. O exemplo está em
+Para um servidor EC2 Amazon Linux que já hospeda o `personal-site`, o
+repositório inclui um alvo separado em
+[`docker-compose.production.yml`](./docker-compose.production.yml). Ele mantém
+toda a infraestrutura em Docker, incluindo LocalStack para emular S3/SQS, e
+compartilha a rede `ninar_edge` com o Caddy existente. O exemplo de rotas está em
 [`infra/ec2/Caddyfile.example`](./infra/ec2/Caddyfile.example).
 
 O workflow [`deploy-ec2.yml`](./.github/workflows/deploy-ec2.yml) segue o mesmo

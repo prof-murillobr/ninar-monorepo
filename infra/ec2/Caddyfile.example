@@ -1,5 +1,6 @@
-# Caddy runs on the EC2 host, outside Docker.
-# Replace the domains before copying this file to /etc/caddy/Caddyfile.
+# Caddy already runs in the personal-site Docker Compose project.
+# Add these site blocks to its existing Caddyfile. The Caddy container must
+# also join the external Docker network named ninar_edge.
 
 ninar.example.com {
   encode zstd gzip
@@ -11,7 +12,7 @@ ninar.example.com {
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
-  reverse_proxy 127.0.0.1:3000
+  reverse_proxy ninar-web:3000
 }
 
 api.ninar.example.com {
@@ -23,5 +24,18 @@ api.ninar.example.com {
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
-  reverse_proxy 127.0.0.1:3001
+  reverse_proxy ninar-api:3001
+}
+
+storage.ninar.example.com {
+  encode zstd gzip
+
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+  }
+
+  reverse_proxy ninar-storage:4566 {
+    header_up Host {http.request.host}
+  }
 }

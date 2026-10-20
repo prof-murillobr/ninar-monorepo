@@ -64,6 +64,7 @@ jobs:
           set -euo pipefail
           deploy_dir="${NINAR_DEPLOY_DIR:-$HOME/apps/ninar}"
           cd "$deploy_dir"
+          docker network inspect ninar_edge >/dev/null 2>&1 || docker network create ninar_edge
           docker compose \
             --env-file .env.production \
             -f docker-compose.production.yml \

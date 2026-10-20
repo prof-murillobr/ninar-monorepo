@@ -1,23 +1,29 @@
 # Deploy no EC2 com Caddy e GitHub Actions
 
-Este alvo usa Docker Compose no próprio Amazon Linux EC2. O Caddy continua
-instalado no host e é o único processo exposto publicamente; os containers web
-e API escutam somente em `127.0.0.1:3000` e `127.0.0.1:3001`.
+Este alvo usa Docker Compose na mesma Amazon Linux EC2 que já hospeda o
+`personal-site`. Não é necessário criar outro usuário, outra EC2 ou outro
+Docker. A stack adiciona web, API, worker, inference, Postgres, Redis e
+LocalStack (S3/SQS emulado) e usa os volumes Docker para persistência local.
+
+O Caddy existente do `personal-site` continua sendo a única entrada pública.
+Os serviços do Ninar entram na rede Docker externa `ninar_edge`; o Caddy deve
+usar os aliases `ninar-web`, `ninar-api` e `ninar-storage`.
 
 ## Preparar o host uma vez
 
-Instale Docker, Git e `rsync`, habilite o serviço e adicione o usuário do
-runner ao grupo Docker:
+Como o host já executa o `personal-site`, mantenha o usuário e o acesso Docker
+que o runner atual já utiliza. Apenas confirme que `rsync` está instalado:
 
 ```bash
-sudo dnf install -y docker git rsync
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"
+sudo dnf install -y rsync
+docker info
 ```
 
-Instale um runner self-hosted nas configurações do repositório GitHub com as
-labels `self-hosted`, `linux`, `x64` e `ninar-ec2`. Execute-o como usuário sem
-privilégio de root.
+O runner do `personal-site` pode ser reutilizado se for compartilhado pela
+organização. Se ele estiver registrado somente naquele repositório, registre
+uma segunda instância do runner para este repositório, sob o mesmo usuário e
+em outro diretório; não crie um usuário Linux novo. A nova instância precisa
+das labels `self-hosted`, `linux`, `x64` e `ninar-ec2`.
 
 Crie o diretório persistente e o ambiente de produção:
 
@@ -28,23 +34,44 @@ chmod 600 "$HOME/apps/ninar/.env.production"
 $EDITOR "$HOME/apps/ninar/.env.production"
 ```
 
-O arquivo deve conter os valores reais de Postgres, S3, SQS, Hugging Face e
-domínios. Prefira a IAM Role da instância para S3/SQS; não coloque chaves AWS
-estáticas nesse arquivo.
+O arquivo contém a configuração local do Postgres, Redis e LocalStack, além do
+token do Hugging Face e dos domínios. `AWS_ACCESS_KEY_ID=test` e
+`AWS_SECRET_ACCESS_KEY=test` são somente credenciais fictícias aceitas pelo
+LocalStack; nunca substitua esses valores por chaves AWS reais nesse ambiente.
 
-## Configurar o Caddy do host
+## Integrar o Caddy existente
 
-Adicione os registros DNS `A` para o domínio web e o domínio da API apontando
-para o Elastic IP. Libere somente `80` e `443` no Security Group. Depois:
+Adicione registros DNS `A` para o domínio web, API e storage apontando para o
+Elastic IP. Libere somente `80` e `443` no Security Group. Não inicie outro
+Caddy: o Caddy do `personal-site` já ocupa essas portas.
+
+Crie a rede externa antes da primeira subida:
 
 ```bash
-sudo cp infra/ec2/Caddyfile.example /etc/caddy/Caddyfile
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+docker network inspect ninar_edge >/dev/null 2>&1 || docker network create ninar_edge
 ```
 
-Altere `ninar.example.com` e `api.ninar.example.com` no arquivo antes de
-recarregar o serviço. O Caddy emitirá e renovará os certificados HTTPS.
+Para que a conexão sobreviva a reinícios do `personal-site`, adicione a rede
+externa ao serviço `caddy` do `docker-compose.production.yml` dele:
+
+```yaml
+services:
+  caddy:
+    networks:
+      - default
+      - ninar_edge
+
+networks:
+  ninar_edge:
+    external: true
+    name: ninar_edge
+```
+
+Depois, adicione os três blocos de [`Caddyfile.example`](./Caddyfile.example)
+ao Caddyfile existente.
+Os destinos são `ninar-web:3000`, `ninar-api:3001` e `ninar-storage:4566`.
+No bloco de storage, preserve o header `Host`; ele faz parte da URL assinada
+do upload S3. Depois valide e recarregue o Caddy normalmente.
 
 ## Configurar o GitHub Actions
 
@@ -54,10 +81,11 @@ runner instalado no EC2. Ele:
 1. faz checkout do commit da branch `main`;
 2. sincroniza o código para `$HOME/apps/ninar` (ou para a variável de repositório
    `NINAR_DEPLOY_DIR`);
-3. preserva `.env.production` e volumes persistentes;
-4. valida o Compose;
-5. reconstrói e reinicia a stack;
-6. exibe o estado dos containers.
+3. cria a rede `ninar_edge` se necessário;
+4. preserva `.env.production` e volumes persistentes;
+5. valida o Compose;
+6. reconstrói e reinicia a stack;
+7. exibe o estado dos containers.
 
 Recomenda-se criar um GitHub Environment chamado `production` com aprovação
 obrigatória antes do deploy. O workflow não recebe tokens de aplicação nem

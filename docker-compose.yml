@@ -22,6 +22,8 @@ services:
       SERVICES: sqs,s3
       AWS_DEFAULT_REGION: us-east-1
       DEBUG: 0
+      S3_BUCKET: ninar-audio
+      NINAR_WEB_ORIGIN: http://localhost:3000
     ports:
       - "4566:4566"
     volumes:

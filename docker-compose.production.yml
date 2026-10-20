@@ -26,6 +26,28 @@ services:
       timeout: 5s
       retries: 10
 
+  localstack:
+    image: localstack/localstack:3.8.1
+    environment:
+      SERVICES: s3,sqs
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      DEBUG: "0"
+      S3_BUCKET: ${S3_BUCKET:-ninar-audio}
+      NINAR_WEB_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in .env.production}
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./infra/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
+    networks:
+      default: {}
+      edge:
+        aliases: [ninar-storage]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   inference:
     build:
       context: ./apps/inference
@@ -52,20 +74,26 @@ services:
       NODE_ENV: production
       PORT: 3001
       AWS_REGION: ${AWS_REGION:?Set AWS_REGION in .env.production}
-      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
-      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env.production}
-      SQS_QUEUE_URL: ${SQS_QUEUE_URL:?Set SQS_QUEUE_URL in .env.production}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      S3_ENDPOINT: http://localstack:4566
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:?Set S3_PUBLIC_ENDPOINT in .env.production}
+      S3_BUCKET: ${S3_BUCKET:-ninar-audio}
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/analyses
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       POSTGRES_URL: ${POSTGRES_URL:?Set POSTGRES_URL in .env.production}
       REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env.production}
       CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in .env.production}
-    ports:
-      - "127.0.0.1:3001:3001"
+    networks:
+      default: {}
+      edge:
+        aliases: [ninar-api]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -80,10 +108,12 @@ services:
     environment:
       NODE_ENV: production
       AWS_REGION: ${AWS_REGION:?Set AWS_REGION in .env.production}
-      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env.production}
-      SQS_QUEUE_URL: ${SQS_QUEUE_URL:?Set SQS_QUEUE_URL in .env.production}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      S3_ENDPOINT: http://localstack:4566
+      S3_BUCKET: ${S3_BUCKET:-ninar-audio}
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/analyses
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       POSTGRES_URL: ${POSTGRES_URL:?Set POSTGRES_URL in .env.production}
       CLASSIFIER_URL: http://inference:8000
       WORKER_ENABLED: ${WORKER_ENABLED:-true}
@@ -92,6 +122,8 @@ services:
       postgres:
         condition: service_healthy
       inference:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     restart: unless-stopped
 
@@ -102,8 +134,10 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env.production}
     environment:
       NODE_ENV: production
-    ports:
-      - "127.0.0.1:3000:3000"
+    networks:
+      default: {}
+      edge:
+        aliases: [ninar-web]
     depends_on:
       api:
         condition: service_healthy
@@ -113,3 +147,11 @@ volumes:
   postgres_data:
   redis_data:
   hf_cache:
+  localstack_data:
+
+networks:
+  default:
+    name: ninar_internal
+  edge:
+    external: true
+    name: ninar_edge
