@@ -19,7 +19,7 @@ substitui orientação profissional de saúde.
 - isolamento do runtime Python/IA em um serviço FastAPI independente;
 - PostgreSQL como fonte de verdade e Redis como otimização descartável;
 - ambiente local reproduzível com Docker Compose e LocalStack;
-- testes unitários, validação de tipos, lint, CI e teste E2E com Playwright;
+- testes unitários, validação de tipos, lint e teste E2E com Playwright;
 - preocupação com privacidade, limites do modelo e comunicação responsável.
 
 ## Arquitetura
@@ -135,7 +135,7 @@ Kubernetes não é necessário para executar o ambiente local atual.
 - retentativas da fila e DLQ;
 - testes unitários para casos de uso, adapters e worker;
 - teste E2E com Playwright cobrindo upload, CORS, fila, inferência e resultado;
-- CI executando lint, typecheck, build e testes.
+- scripts locais para lint, typecheck, build e testes.
 
 ## Rodar localmente
 
@@ -173,8 +173,8 @@ resultado renderizado no frontend.
 
 ## Deploy e segurança
 
-O repositório inclui workflow de CI e um workflow de deploy que pode ser
-adaptado a um runner self-hosted ou ao provedor escolhido. Configurações
+O repositório inclui um workflow de deploy que pode ser adaptado a um runner
+self-hosted ou ao provedor escolhido. Configurações
 específicas de host, proxy, DNS, secrets e credenciais devem permanecer fora do
 código-fonte.
 
