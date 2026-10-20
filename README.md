@@ -1,52 +1,145 @@
 # Ninar
 
-Ninar é um laboratório fullstack + IA para observar padrões em um áudio curto de choro de bebê. Ele retorna hipóteses como fome, sono, desconforto abdominal, necessidade de arrotar ou desconforto geral, sempre acompanhadas de confiança; quando a confiança é baixa, isso é sinalizado separadamente. Não é um dispositivo médico e não substitui avaliação profissional.
+> Uma aplicação fullstack + IA para ajudar pessoas cuidadoras a observar possíveis necessidades por meio de um áudio curto.
 
-## Arquitetura em uma frase
+O Ninar recebe alguns segundos de áudio, processa a gravação de forma
+assíncrona e retorna hipóteses como fome, sono, desconforto abdominal,
+necessidade de arrotar ou desconforto geral, sempre com percentuais de
+confiança.
 
-O navegador envia o áudio diretamente ao S3 usando uma URL pré-assinada; a API NestJS registra a análise e publica uma tarefa na SQS; um worker TypeScript consome a fila, baixa o objeto, chama o classificador privado FastAPI/PyTorch e persiste o resultado no PostgreSQL. Redis acelera leituras concluídas, sem ser fonte de verdade.
+O projeto é experimental: o resultado serve como apoio à observação e não
+substitui orientação profissional de saúde.
+
+## O que este projeto demonstra
+
+- construção de um produto completo, do frontend à inferência de ML;
+- API organizada com SOLID, casos de uso e Arquitetura Hexagonal;
+- upload direto para object storage usando URL pré-assinada;
+- processamento assíncrono com fila, worker, retentativas e DLQ;
+- isolamento do runtime Python/IA em um serviço FastAPI independente;
+- PostgreSQL como fonte de verdade e Redis como otimização descartável;
+- ambiente local reproduzível com Docker Compose e LocalStack;
+- testes unitários, validação de tipos, lint, CI e teste E2E com Playwright;
+- preocupação com privacidade, limites do modelo e comunicação responsável.
+
+## Arquitetura
 
 ```text
-Next.js ── HTTPS ──> NestJS API ──> PostgreSQL
-   │                    │  └──────> Redis (cache)
-   │                    └─────────> SQS ──> Worker ──> FastAPI/PyTorch
-   └── PUT pré-assinado ──────────> S3
+                           ┌──────────────────────────┐
+                           │  FastAPI + PyTorch        │
+                           │  classificação do áudio   │
+                           └────────────▲─────────────┘
+                                        │ HTTP interno
+┌──────────────┐  HTTPS  ┌──────────────┴──────────────┐
+│ Next.js      ├─────────►│ NestJS API                  │
+│ gravação/UI  │          │ casos de uso + adapters     │
+└──────┬───────┘          └──────┬──────────┬───────────┘
+       │                         │          │
+       │ upload pré-assinado     │          │ publicação
+       ▼                         ▼          ▼
+┌──────────────┐          ┌───────────┐  ┌──────────────┐
+│ S3/LocalStack│          │PostgreSQL │  │ SQS/LocalStack│
+│ áudio        │          │fonte real │  │ fila + DLQ    │
+└──────────────┘          └───────────┘  └──────┬───────┘
+                                                 │ consumo
+                                          ┌──────▼───────┐
+                                          │ Worker        │
+                                          │ TS + AWS SDK  │
+                                          └───────────────┘
+
+                         Redis: cache de leituras concluídas
 ```
 
-## Por que cada tecnologia
+O caminho local usa LocalStack para emular S3 e SQS sem depender de uma conta
+cloud. Os adapters preservam os contratos necessários para trocar a
+implementação por serviços gerenciados quando isso fizer sentido.
 
-- **Next.js + TypeScript:** interface React com build otimizado e tipos compartilhados mentalmente com o backend. O browser trata upload, gravação, polling e histórico; não conhece credenciais AWS.
-- **NestJS + TypeScript:** módulos, injeção de dependência e pipes deixam explícitos os limites da API. Os casos de uso dependem de portas, não de PostgreSQL/S3/SQS.
-- **Arquitetura Hexagonal:** `domain` e `application` não importam SDK. Os adapters em `adapters/` podem ser trocados por mocks, RDS, outro storage ou outra fila sem reescrever a regra.
-- **SQS + DLQ:** processamento assíncrono, long polling e retentativas sem manter Kafka na EC2. O worker remove a mensagem somente depois da persistência.
-- **PostgreSQL:** fonte definitiva das análises, estados e resultados. Transações e JSONB mantêm o histórico mesmo que o cache seja perdido.
-- **Redis:** cache rápido e descartável para análises concluídas durante o polling do frontend. O cache usa TTL curto, é invalidado ao excluir uma análise e nunca substitui o PostgreSQL.
-- **S3:** objeto grande fora da API e do banco; URL pré-assinada reduz latência e exposição de credenciais. O bucket tem retenção de sete dias na AWS.
-- **FastAPI + PyTorch:** runtime isolado de ML, privado na rede do cluster e fácil de substituir por outro modelo. O checkpoint do Hugging Face é baixado no primeiro start, mas o commit do modelo e do backbone ficam fixados em `HF_MODEL_REVISION`/`HF_BASE_MODEL_REVISION`; produção não acompanha `main`. O `ffmpeg` no container permite decodificar WebM/Opus produzido pelo `MediaRecorder` do navegador, além de WAV e MP3.
-- **Docker Compose:** ciclo local repetível com Postgres, Redis e LocalStack (S3/SQS).
-- **k3s na EC2:** Kubernetes pequeno para estudar deployments, probes, Ingress, recursos e escala sem o custo operacional do EKS.
-- **Terraform:** infraestrutura AWS declarativa: EC2, IAM Role, S3, SQS/DLQ, ECR e Security Group.
+O diagrama visual está em [`arch-plan.html`](./arch-plan.html), e o plano de
+desenvolvimento está em [`plan.md`](./plan.md).
 
-## Fluxo de uso
+## Decisões técnicas e trade-offs
 
-1. `POST /analyses/upload-url` retorna `analysisId`, `objectKey` e URL pré-assinada.
-2. O frontend faz `PUT` do áudio diretamente para a URL.
-3. `POST /analyses` grava o registro e publica `{ analysisId, objectKey }`.
-4. O worker faz long polling, marca `processing`, busca S3 e chama `POST /classify`.
-5. O resultado é salvo como JSONB; depois da persistência, o worker remove o áudio temporário do S3 e a mensagem da fila.
-6. O frontend consulta `GET /analyses/:id` até `completed` ou `failed`.
+### Next.js + TypeScript
 
-Se a classificação falhar, o áudio é mantido temporariamente para a retentativa
-da mensagem. Depois de exceder as retentativas da SQS, a mensagem vai para a
-DLQ e o objeto deve ser revisado conforme a política de retenção do ambiente.
+Entrega a interface React, build otimizado, metadata SEO, experiência mobile e
+um caminho simples para evoluir a aplicação para PWA. TypeScript reduz erros no
+contrato entre tela, API e resultado da classificação.
 
-Endpoints auxiliares: `GET /analyses`, `DELETE /analyses/:id`, `GET /health`, `GET /metrics` e documentação `GET /docs`.
+### NestJS + Arquitetura Hexagonal
+
+A API separa domínio, casos de uso, portas e adapters. Os casos de uso não
+conhecem diretamente PostgreSQL, Redis, S3 ou SQS; isso facilita testes, troca
+de infraestrutura e manutenção do código.
+
+### Upload direto para object storage
+
+O áudio não atravessa a API. O frontend solicita uma URL pré-assinada e envia o
+arquivo diretamente ao storage. Isso reduz memória, latência e pressão sobre o
+processo HTTP da API.
+
+### Fila e worker
+
+A API registra e enfileira rapidamente. O worker consome, baixa o áudio, chama a
+inferência, persiste o resultado e só então confirma a mensagem. Esse desenho
+absorve picos, permite retentativas e escala o processamento de forma
+independente.
+
+SQS/LocalStack foi escolhido para este cenário por oferecer fila, visibilidade,
+retentativa e DLQ sem o custo operacional de manter Kafka. Kafka seria uma
+alternativa quando throughput muito alto, replay de eventos ou vários grupos de
+consumidores fossem requisitos centrais.
+
+### PostgreSQL
+
+É a fonte de verdade das análises, estados e resultados. O histórico continua
+consistente mesmo quando o cache é perdido.
+
+### Redis
+
+É um cache rápido e descartável para análises concluídas durante o polling do
+frontend. O TTL é curto, a exclusão invalida a chave e nenhuma informação
+essencial depende exclusivamente dele. Se o cache falhar, a API pode consultar
+o PostgreSQL.
+
+### FastAPI + PyTorch
+
+O runtime de inferência fica isolado das dependências Node/NestJS. Isso permite
+trocar o checkpoint, atualizar o modelo ou mover a inferência para outro
+serviço sem reescrever a API. A revisão do modelo fica fixada por commit.
+
+### Docker Compose e LocalStack
+
+Compose reduz o tempo entre alteração e feedback e reproduz localmente API,
+worker, inferência, PostgreSQL, Redis e storage/fila. LocalStack mantém o
+contrato de S3/SQS sem exigir recursos cloud durante o desenvolvimento.
+
+Os manifestos em `infra/k8s` representam uma trilha de evolução para k3s, mas
+Kubernetes não é necessário para executar o ambiente local atual.
+
+## Fluxo de uma análise
+
+1. A pessoa grava até 12 segundos de áudio no navegador.
+2. O frontend solicita uma URL pré-assinada à API.
+3. O áudio é enviado diretamente ao storage.
+4. A API cria a análise no PostgreSQL e publica uma mensagem na fila.
+5. O worker consome a mensagem e chama o serviço FastAPI.
+6. O resultado é persistido e o áudio temporário é removido após o processamento.
+7. O frontend consulta o estado até `completed` ou `failed` e atualiza o histórico.
+
+## Qualidade e confiabilidade
+
+- SOLID e portas/adapters na API;
+- validação de DTOs, CORS configurável, Helmet e rate limit;
+- health checks para API, banco, Redis, LocalStack e inferência;
+- logs estruturados e endpoint de métricas;
+- retentativas da fila e DLQ;
+- testes unitários para casos de uso, adapters e worker;
+- teste E2E com Playwright cobrindo upload, CORS, fila, inferência e resultado;
+- CI executando lint, typecheck, build e testes.
 
 ## Rodar localmente
 
-Pré-requisitos: Docker Desktop, Node.js 22+ e pnpm 10. O `.env.local` é local,
-ignorado pelo Git e contém as configurações do ambiente de desenvolvimento;
-nunca commite um token.
+Pré-requisitos: Docker Desktop, Node.js 22+ e pnpm 10.
 
 ```bash
 cp .env.local.example .env.local
@@ -54,80 +147,52 @@ cp .env.local.example .env.local
 pnpm compose:up
 ```
 
-URLs: web `http://localhost:3000`, API `http://localhost:3001`, Swagger `http://localhost:3001/docs`, inferência `http://localhost:8000/health`.
+Serviços principais:
 
-O `LocalStack` cria `ninar-audio`, `analyses` e `analyses-dlq`. A fase 6 funciona localmente: o mesmo worker usa `WORKER_CONCURRENCY=1`, long polling, logs estruturados, probes e `/metrics`; em k3s local você pode aplicar os manifests e aumentar réplicas somente após medir CPU/memória.
+- frontend: `http://localhost:3000`;
+- API: `http://localhost:3001`;
+- Swagger: `http://localhost:3001/docs`;
+- inferência: `http://localhost:8000/health`.
 
-### SEO e experiência instalável
+O LocalStack cria automaticamente o bucket, a fila e a DLQ necessárias para o
+fluxo local.
 
-O frontend publica uma base de SEO técnico pelo App Router do Next.js:
-
-- metadata em português, URL canônica, keywords, Open Graph e Twitter Cards;
-- imagem social em [`apps/web/public/og-image.png`](./apps/web/public/og-image.png);
-- favicon e ícone de instalação derivados do logo em [`apps/web/src/app/icon.svg`](./apps/web/src/app/icon.svg);
-- dados estruturados JSON-LD descrevendo o Ninar como uma aplicação web gratuita;
-- `robots.txt`, `sitemap.xml` e `manifest.webmanifest` gerados pelo Next.js.
-
-Em produção, a URL canônica é `https://ninar-app.com`. Depois de publicar, valide
-`/robots.txt`, `/sitemap.xml` e `/manifest.webmanifest` no domínio público e
-cadastre o sitemap no Google Search Console ou ferramenta equivalente. O conteúdo
-do Ninar apresenta hipóteses experimentais e deve manter essa comunicação clara,
-sem prometer diagnóstico ou substituir orientação profissional de saúde.
-
-### Teste ponta a ponta
-
-Com os serviços locais em execução, o teste Playwright abre o frontend em Chromium, seleciona um WAV gerado em memória, valida o preflight CORS, envia o objeto ao S3/LocalStack, aguarda o worker/classificador e confirma o resultado renderizado:
+## Testes
 
 ```bash
+pnpm typecheck
+pnpm lint
+pnpm test
 pnpm test:e2e
+pnpm build
 ```
 
-O bootstrap do LocalStack aplica automaticamente a regra CORS necessária ao bucket `ninar-audio`. Isso evita o `Failed to fetch` do navegador durante o `PUT` pré-assinado.
+O teste E2E usa Chromium, gera um WAV em memória, valida o preflight CORS,
+envia o objeto ao LocalStack, aguarda worker/classificador e confirma o
+resultado renderizado no frontend.
 
-## Deploy automatizado
+## Deploy e segurança
 
-O repositório inclui um workflow de deploy para ambientes com Docker Compose e
-um workflow de CI para validação. A automação pode ser conectada a um runner
-self-hosted ou ao provedor de hospedagem escolhido, mantendo as credenciais e
-configurações específicas fora do código-fonte.
+O repositório inclui workflow de CI e um workflow de deploy que pode ser
+adaptado a um runner self-hosted ou ao provedor escolhido. Configurações
+específicas de host, proxy, DNS, secrets e credenciais devem permanecer fora do
+código-fonte.
 
-O ambiente de execução deve fornecer Docker, Compose e um arquivo de ambiente
-preenchido a partir do template correspondente. Nunca coloque tokens, senhas,
-chaves ou arquivos de ambiente preenchidos no GitHub; use os secrets e as
-variáveis protegidas da plataforma de CI/CD.
+Nunca versione tokens, senhas, chaves, áudios ou arquivos de ambiente
+preenchidos. Consulte [`SECURITY.md`](./SECURITY.md) para o processo de
+reporte.
 
-## Código aberto, modelo e segurança
+## Próximas evoluções
 
-O código deste repositório é distribuído sob a [licença MIT](./LICENSE). Isso
-não altera as licenças dos frameworks, dependências, imagens Docker ou do
-modelo de terceiros. O classificador usa o checkpoint
-[`dontcryai/dontcry`](https://huggingface.co/dontcryai/dontcry); consulte o model
-card e aceite as condições de acesso do Hugging Face antes de usá-lo. Não
-versione checkpoints, tokens, áudios ou qualquer arquivo de ambiente preenchido.
+- autenticação e histórico por usuário;
+- feedback humano para avaliar a qualidade das hipóteses;
+- observabilidade distribuída e métricas de profundidade da fila;
+- escala independente do worker conforme CPU, latência e backlog;
+- substituição progressiva de emuladores por serviços gerenciados quando houver
+  necessidade real de disponibilidade e operação cloud.
 
-Antes do primeiro push público, valide o conteúdo que será versionado:
+## Licença
 
-```bash
-git add --dry-run .
-git status --short
-```
-
-O `.gitignore` exclui ambientes locais, dependências, builds, estado do
-Terraform, chaves e relatórios de teste. Se um segredo já tiver sido commitado,
-removê-lo do arquivo não basta: revogue/rotacione a credencial e trate o
-histórico do repositório antes de torná-lo público. Consulte também
-[`SECURITY.md`](./SECURITY.md).
-
-## Qualidade e segurança
-
-- `pnpm typecheck`, `pnpm build` e testes unitários rodam no CI.
-- Helmet, CORS configurável, rate limit de 60 requisições/minuto, validação de DTOs e limite de upload no frontend.
-- S3 privado, criptografia, CORS mínimo e lifecycle de expiração.
-- NetworkPolicy impede tráfego arbitrário para o classificador; somente pods `worker` podem acessá-lo.
-- O resultado é apresentado como hipótese com confiança; `confidence_low` sinaliza quando o modelo ficou abaixo do limiar sem transformar a incerteza em uma categoria duplicada.
-
-## Próximos passos profissionais
-
-Autenticação por usuário, migrations com ferramenta dedicada, RDS Multi-AZ, ElastiCache, tracing distribuído, métricas de profundidade da SQS, autoscaling por fila e testes E2E no pipeline.
-
-O guia [technology-architecture.html](./technology-architecture.html) explica as decisões, trade-offs e quando aplicar cada componente. Ele é material de estudo local e está no `.gitignore`.
+Código distribuído sob a [licença MIT](./LICENSE). O modelo de terceiros possui
+suas próprias condições de uso; consulte o model card do
+[`dontcryai/dontcry`](https://huggingface.co/dontcryai/dontcry).
