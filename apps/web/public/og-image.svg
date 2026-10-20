@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff0e9"/>
+      <stop offset="1" stop-color="#f4eef9"/>
+    </linearGradient>
+    <linearGradient id="coral" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4aaa0"/>
+      <stop offset="1" stop-color="#dc827a"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#c78586" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" rx="42" fill="url(#background)"/>
+  <circle cx="1040" cy="70" r="180" fill="#fff9f5" opacity=".7"/>
+  <circle cx="170" cy="570" r="220" fill="#fff9f5" opacity=".6"/>
+  <g filter="url(#shadow)">
+    <rect x="112" y="156" width="166" height="166" rx="48" fill="#fffaf8"/>
+    <rect x="125" y="169" width="140" height="140" rx="42" fill="url(#coral)" stroke="#fff" stroke-width="12"/>
+    <text x="195" y="272" text-anchor="middle" fill="#fff" font-family="Verdana" font-size="92" font-weight="700">n</text>
+  </g>
+  <path d="m286 126 8 24 24 8-24 8-8 24-8-24-24-8 24-8 8-24Z" fill="#e8af5c"/>
+  <text x="330" y="230" fill="#443b55" font-family="Verdana" font-size="78" font-weight="700" letter-spacing="-3">ninar</text>
+  <text x="334" y="300" fill="#806f87" font-family="Verdana" font-size="32" font-weight="600">um carinho para cada momento</text>
+  <text x="112" y="452" fill="#443b55" font-family="Verdana" font-size="50" font-weight="700" letter-spacing="-1">Cuidado atento para cada momento.</text>
+  <text x="114" y="504" fill="#806f87" font-family="Verdana" font-size="27">Grave um chorinho e observe hipóteses de cuidado.</text>
+</svg>
