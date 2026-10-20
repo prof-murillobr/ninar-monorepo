@@ -93,25 +93,17 @@ O bootstrap do LocalStack aplica automaticamente a regra CORS necessária ao buc
 
 A EC2 recebe uma IAM Instance Profile com menor privilégio e IMDSv2 obrigatório. Em produção, substitua o `.env.hml` por SSM Parameter Store/Secrets Manager e RDS/ElastiCache antes de escalar.
 
-## Deploy automatizado no EC2 com Caddy
+## Deploy automatizado
 
-Para um servidor EC2 Amazon Linux que já hospeda o `personal-site`, o
-repositório inclui um alvo separado em
-[`docker-compose.production.yml`](./docker-compose.production.yml). Ele mantém
-toda a infraestrutura em Docker, incluindo LocalStack para emular S3/SQS, e
-compartilha a rede `ninar_edge` com o Caddy existente. O exemplo de rotas está em
-[`infra/ec2/Caddyfile.example`](./infra/ec2/Caddyfile.example).
+O repositório inclui um workflow de deploy para ambientes com Docker Compose e
+um workflow de CI para validação. A automação pode ser conectada a um runner
+self-hosted ou ao provedor de hospedagem escolhido, mantendo as credenciais e
+configurações específicas fora do código-fonte.
 
-O workflow [`deploy-ec2.yml`](./.github/workflows/deploy-ec2.yml) segue o mesmo
-padrão do `personal-site`: um runner self-hosted com a label `ninar-ec2` roda no
-EC2, sincroniza a branch `main`, preserva `.env.production` e executa o Compose
-de produção. O passo a passo de instalação do runner, configuração do Caddy,
-DNS, portas e permissões está em [`infra/ec2/README.md`](./infra/ec2/README.md).
-
-Crie o GitHub Environment `production` com aprovação obrigatória e, se quiser
-usar outro caminho persistente, defina a variável de repositório
-`NINAR_DEPLOY_DIR`. O padrão é `$HOME/apps/ninar`. Nunca coloque o `.env.production`
-preenchido no GitHub.
+O ambiente de execução deve fornecer Docker, Compose e um arquivo de ambiente
+preenchido a partir do template correspondente. Nunca coloque tokens, senhas,
+chaves ou arquivos de ambiente preenchidos no GitHub; use os secrets e as
+variáveis protegidas da plataforma de CI/CD.
 
 ## Código aberto, modelo e segurança
 
