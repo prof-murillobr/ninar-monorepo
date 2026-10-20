@@ -26,6 +26,7 @@ jobs:
       - run: pnpm test
       - run: pnpm lint
       - run: docker compose config
+      - run: docker compose --env-file .env.production.example -f docker-compose.production.yml config >/dev/null
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8

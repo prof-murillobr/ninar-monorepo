@@ -43,7 +43,9 @@ Endpoints auxiliares: `GET /analyses`, `DELETE /analyses/:id`, `GET /health`, `G
 
 ## Rodar localmente
 
-Pré-requisitos: Docker Desktop, Node.js 22+ e pnpm 10. O `.env.local` contém somente o `HF_TOKEN` local; nunca commite um token.
+Pré-requisitos: Docker Desktop, Node.js 22+ e pnpm 10. O `.env.local` é local,
+ignorado pelo Git e contém as configurações do ambiente de desenvolvimento;
+nunca commite um token.
 
 ```bash
 cp .env.local.example .env.local
@@ -74,6 +76,26 @@ O bootstrap do LocalStack aplica automaticamente a regra CORS necessária ao buc
 5. Crie o Secret Kubernetes a partir do `.env.hml` e aplique `kubectl apply -k infra/k8s/overlays/hml`.
 
 A EC2 recebe uma IAM Instance Profile com menor privilégio e IMDSv2 obrigatório. Em produção, substitua o `.env.hml` por SSM Parameter Store/Secrets Manager e RDS/ElastiCache antes de escalar.
+
+## Deploy automatizado no EC2 com Caddy
+
+Para um servidor EC2 Amazon Linux, o repositório inclui um alvo separado em
+[`docker-compose.production.yml`](./docker-compose.production.yml). Ele não
+inicia LocalStack: usa S3/SQS reais, mantém Postgres/Redis/inference privados e
+expõe web e API somente em `127.0.0.1`. O Caddy instalado no host termina o
+HTTPS e encaminha para essas duas portas. O exemplo está em
+[`infra/ec2/Caddyfile.example`](./infra/ec2/Caddyfile.example).
+
+O workflow [`deploy-ec2.yml`](./.github/workflows/deploy-ec2.yml) segue o mesmo
+padrão do `personal-site`: um runner self-hosted com a label `ninar-ec2` roda no
+EC2, sincroniza a branch `main`, preserva `.env.production` e executa o Compose
+de produção. O passo a passo de instalação do runner, configuração do Caddy,
+DNS, portas e permissões está em [`infra/ec2/README.md`](./infra/ec2/README.md).
+
+Crie o GitHub Environment `production` com aprovação obrigatória e, se quiser
+usar outro caminho persistente, defina a variável de repositório
+`NINAR_DEPLOY_DIR`. O padrão é `$HOME/apps/ninar`. Nunca coloque o `.env.production`
+preenchido no GitHub.
 
 ## Código aberto, modelo e segurança
 

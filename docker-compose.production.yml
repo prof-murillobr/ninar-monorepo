@@ -1,0 +1,115 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ninar}
+      POSTGRES_USER: ${POSTGRES_USER:-ninar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/001_create_analyses.sql:/docker-entrypoint-initdb.d/001_create_analyses.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  inference:
+    build:
+      context: ./apps/inference
+    environment:
+      PORT: 8000
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_MODEL_ID: ${HF_MODEL_ID:-dontcryai/dontcry}
+      HF_MODEL_REVISION: ${HF_MODEL_REVISION:-158d507a8e19afeedb983f5ca25396453ac1c92b}
+      HF_BASE_MODEL_REVISION: ${HF_BASE_MODEL_REVISION:-dba3bb02fda4248b6e082697eee756de8fe8aa8a}
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      AWS_REGION: ${AWS_REGION:?Set AWS_REGION in .env.production}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env.production}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:?Set SQS_QUEUE_URL in .env.production}
+      POSTGRES_URL: ${POSTGRES_URL:?Set POSTGRES_URL in .env.production}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env.production}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in .env.production}
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: ./apps/worker
+    environment:
+      NODE_ENV: production
+      AWS_REGION: ${AWS_REGION:?Set AWS_REGION in .env.production}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env.production}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:?Set SQS_QUEUE_URL in .env.production}
+      POSTGRES_URL: ${POSTGRES_URL:?Set POSTGRES_URL in .env.production}
+      CLASSIFIER_URL: http://inference:8000
+      WORKER_ENABLED: ${WORKER_ENABLED:-true}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      inference:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env.production}
+    environment:
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  hf_cache:

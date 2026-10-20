@@ -1,0 +1,93 @@
+name: Deploy Ninar to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ninar-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Amazon Linux EC2
+    runs-on: [self-hosted, linux, x64, ninar-ec2]
+    environment:
+      name: production
+    timeout-minutes: 60
+    env:
+      NINAR_DEPLOY_DIR: ${{ vars.NINAR_DEPLOY_DIR }}
+
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate host prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v docker >/dev/null
+          command -v rsync >/dev/null
+          docker info >/dev/null
+
+      - name: Sync release to durable directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_dir="${NINAR_DEPLOY_DIR:-$HOME/apps/ninar}"
+          mkdir -p "$deploy_dir"
+          test -f "$deploy_dir/.env.production"
+
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '.env.production' \
+            --exclude 'node_modules/' \
+            --exclude '.next/' \
+            --exclude 'dist/' \
+            --exclude 'test-results/' \
+            --exclude 'playwright-report/' \
+            --exclude 'data/' \
+            --exclude 'backups/' \
+            "$GITHUB_WORKSPACE/" "$deploy_dir/"
+
+          printf 'Release %s synced to %s\n' "$GITHUB_SHA" "$deploy_dir"
+
+      - name: Validate production Compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_dir="${NINAR_DEPLOY_DIR:-$HOME/apps/ninar}"
+          cd "$deploy_dir"
+          docker compose \
+            --env-file .env.production \
+            -f docker-compose.production.yml \
+            config >/dev/null
+
+      - name: Build and restart production stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_dir="${NINAR_DEPLOY_DIR:-$HOME/apps/ninar}"
+          cd "$deploy_dir"
+          docker compose \
+            --env-file .env.production \
+            -f docker-compose.production.yml \
+            up -d --build --remove-orphans
+
+      - name: Verify containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_dir="${NINAR_DEPLOY_DIR:-$HOME/apps/ninar}"
+          cd "$deploy_dir"
+          docker compose \
+            --env-file .env.production \
+            -f docker-compose.production.yml \
+            ps
+          docker image prune -f

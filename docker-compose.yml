@@ -31,10 +31,11 @@ services:
   inference:
     build:
       context: ./apps/inference
-    env_file:
-      - .env.local
     environment:
+      HF_TOKEN: ${HF_TOKEN:-}
       HF_MODEL_ID: dontcryai/dontcry
+      HF_MODEL_REVISION: ${HF_MODEL_REVISION:-158d507a8e19afeedb983f5ca25396453ac1c92b}
+      HF_BASE_MODEL_REVISION: ${HF_BASE_MODEL_REVISION:-dba3bb02fda4248b6e082697eee756de8fe8aa8a}
       PORT: 8000
     volumes:
       - hf_cache:/root/.cache/huggingface
@@ -89,6 +90,8 @@ services:
   web:
     build:
       context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3001
     ports:

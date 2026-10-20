@@ -7,7 +7,7 @@ type Prediction = { category: string; confidence: number };
 type ClassificationResult = { model: string; sample_rate: number; duration_seconds: number; predictions: Prediction[]; confidence_low?: boolean };
 type Analysis = { id: string; originalFilename: string; contentType: string; status: Status; result: ClassificationResult | null; errorMessage: string | null; createdAt: string; updatedAt: string };
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/$/, '');
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 const MAX_RECORDING_SECONDS = 12;
 const labels: Record<string, string> = { hungry: 'Fome', tired: 'Sono', belly_pain: 'Desconforto abdominal', burping: 'Arrotar', discomfort: 'Desconforto geral', uncertain: 'Ainda não sei' };
 const labelFor = (value: string) => labels[value] ?? value.replaceAll('_', ' ');

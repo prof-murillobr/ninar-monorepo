@@ -1,0 +1,27 @@
+# Caddy runs on the EC2 host, outside Docker.
+# Replace the domains before copying this file to /etc/caddy/Caddyfile.
+
+ninar.example.com {
+  encode zstd gzip
+
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  reverse_proxy 127.0.0.1:3000
+}
+
+api.ninar.example.com {
+  encode zstd gzip
+
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  reverse_proxy 127.0.0.1:3001
+}

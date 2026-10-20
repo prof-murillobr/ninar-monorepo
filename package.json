@@ -10,7 +10,7 @@
     "dev:web": "pnpm --dir apps/web dev",
     "dev:api": "pnpm --dir apps/api start:dev",
     "dev:worker": "pnpm --dir apps/worker start:dev",
-    "compose:up": "docker compose up --build",
+    "compose:up": "docker compose --env-file .env.local up --build",
     "compose:down": "docker compose down",
     "compose:logs": "docker compose logs -f"
   },
