@@ -57,6 +57,22 @@ URLs: web `http://localhost:3000`, API `http://localhost:3001`, Swagger `http://
 
 O `LocalStack` cria `ninar-audio`, `analyses` e `analyses-dlq`. A fase 6 funciona localmente: o mesmo worker usa `WORKER_CONCURRENCY=1`, long polling, logs estruturados, probes e `/metrics`; em k3s local você pode aplicar os manifests e aumentar réplicas somente após medir CPU/memória.
 
+### SEO e experiência instalável
+
+O frontend publica uma base de SEO técnico pelo App Router do Next.js:
+
+- metadata em português, URL canônica, keywords, Open Graph e Twitter Cards;
+- imagem social em [`apps/web/public/og-image.png`](./apps/web/public/og-image.png);
+- favicon e ícone de instalação derivados do logo em [`apps/web/src/app/icon.svg`](./apps/web/src/app/icon.svg);
+- dados estruturados JSON-LD descrevendo o Ninar como uma aplicação web gratuita;
+- `robots.txt`, `sitemap.xml` e `manifest.webmanifest` gerados pelo Next.js.
+
+Em produção, a URL canônica é `https://ninar-app.com`. Depois de publicar, valide
+`/robots.txt`, `/sitemap.xml` e `/manifest.webmanifest` no domínio público e
+cadastre o sitemap no Google Search Console ou ferramenta equivalente. O conteúdo
+do Ninar apresenta hipóteses experimentais e deve manter essa comunicação clara,
+sem prometer diagnóstico ou substituir orientação profissional de saúde.
+
 ### Teste ponta a ponta
 
 Com os serviços locais em execução, o teste Playwright abre o frontend em Chromium, seleciona um WAV gerado em memória, valida o preflight CORS, envia o objeto ao S3/LocalStack, aguarda o worker/classificador e confirma o resultado renderizado:
