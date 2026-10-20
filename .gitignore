@@ -1,0 +1,45 @@
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.hml.example
+!.env.production.example
+
+# Ambientes preenchidos são sempre locais; somente os templates acima podem
+# ser versionados.
+.env.hml
+
+# Dependências, builds e caches
+node_modules/
+dist/
+.next/
+out/
+build/
+coverage/
+.turbo/
+.cache/
+*.tsbuildinfo
+.pnpm-store/
+.DS_Store
+
+# Artefatos de teste e material gerado
+technology-architecture.html
+__pycache__/
+.pytest_cache/
+test-results/
+playwright-report/
+
+# Terraform: estado e variáveis podem conter credenciais ou outputs sensíveis.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+
+# Chaves e certificados locais
+*.pem
+*.key
+*.p12
+*.pfx

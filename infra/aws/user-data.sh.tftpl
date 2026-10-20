@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y curl ca-certificates jq awscli
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --write-kubeconfig-mode=644" sh -
+systemctl enable k3s
+systemctl start k3s
+
+install -d -m 0755 /opt/ninar
+cat >/opt/ninar/runtime.env <<EOF
+AWS_REGION=${aws_region}
+AWS_EC2_METADATA_DISABLED=false
+EOF
+
+echo "k3s ready; copy the kubeconfig and apply infra/k8s/overlays/hml from the deployment workstation" >/etc/motd

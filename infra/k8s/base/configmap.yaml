@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ninar-config
+data:
+  AWS_REGION: us-east-1
+  S3_BUCKET: ninar-hml-audio
+  SQS_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/000000000000/ninar-hml-analyses
+  CLASSIFIER_URL: http://inference:8000
+  WORKER_ENABLED: "true"
+  WORKER_CONCURRENCY: "1"
+  NODE_ENV: production

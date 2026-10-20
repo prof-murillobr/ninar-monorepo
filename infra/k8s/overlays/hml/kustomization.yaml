@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ninar-hml
+resources:
+  - ../../base
+images:
+  - name: ninar/web
+    newName: REPLACE_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/ninar/web
+    newTag: latest
+  - name: ninar/api
+    newName: REPLACE_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/ninar/api
+    newTag: latest
+  - name: ninar/worker
+    newName: REPLACE_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/ninar/worker
+    newTag: latest
+  - name: ninar/inference
+    newName: REPLACE_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/ninar/inference
+    newTag: latest
+patches:
+  - target:
+      kind: Namespace
+      name: ninar
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: ninar-hml
+  - target:
+      kind: Ingress
+      name: ninar
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: ninar.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/1
+        value: api.ninar.example.com

@@ -1,0 +1,21 @@
+{
+  "name": "ninar",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "lint": "pnpm --dir apps/web lint && pnpm --dir apps/api lint && pnpm --dir apps/worker lint",
+    "test": "pnpm --dir apps/api test && pnpm --dir apps/worker test",
+    "test:e2e": "playwright test",
+    "dev:web": "pnpm --dir apps/web dev",
+    "dev:api": "pnpm --dir apps/api start:dev",
+    "dev:worker": "pnpm --dir apps/worker start:dev",
+    "compose:up": "docker compose up --build",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f"
+  },
+  "packageManager": "pnpm@10.31.0",
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}

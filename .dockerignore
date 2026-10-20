@@ -1,0 +1,7 @@
+node_modules
+dist
+.next
+.git
+.env*
+hf_cache
+coverage
