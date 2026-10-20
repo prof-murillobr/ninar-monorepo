@@ -2,7 +2,7 @@
 # Add these site blocks to its existing Caddyfile. The Caddy container must
 # also join the external Docker network named ninar_edge.
 
-ninar.example.com {
+ninar-app.com {
   encode zstd gzip
 
   header {
@@ -15,7 +15,7 @@ ninar.example.com {
   reverse_proxy ninar-web:3000
 }
 
-api.ninar.example.com {
+api.ninar-app.com {
   encode zstd gzip
 
   header {
@@ -27,7 +27,7 @@ api.ninar.example.com {
   reverse_proxy ninar-api:3001
 }
 
-storage.ninar.example.com {
+storage.ninar-app.com {
   encode zstd gzip
 
   header {
