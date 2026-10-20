@@ -19,7 +19,8 @@ Next.js ── HTTPS ──> NestJS API ──> PostgreSQL
 - **NestJS + TypeScript:** módulos, injeção de dependência e pipes deixam explícitos os limites da API. Os casos de uso dependem de portas, não de PostgreSQL/S3/SQS.
 - **Arquitetura Hexagonal:** `domain` e `application` não importam SDK. Os adapters em `adapters/` podem ser trocados por mocks, RDS, outro storage ou outra fila sem reescrever a regra.
 - **SQS + DLQ:** processamento assíncrono, long polling e retentativas sem manter Kafka na EC2. O worker remove a mensagem somente depois da persistência.
-- **PostgreSQL:** fonte definitiva de análises e resultados. **Redis** é cache opcional e descartável.
+- **PostgreSQL:** fonte definitiva das análises, estados e resultados. Transações e JSONB mantêm o histórico mesmo que o cache seja perdido.
+- **Redis:** cache rápido e descartável para análises concluídas durante o polling do frontend. O cache usa TTL curto, é invalidado ao excluir uma análise e nunca substitui o PostgreSQL.
 - **S3:** objeto grande fora da API e do banco; URL pré-assinada reduz latência e exposição de credenciais. O bucket tem retenção de sete dias na AWS.
 - **FastAPI + PyTorch:** runtime isolado de ML, privado na rede do cluster e fácil de substituir por outro modelo. O checkpoint do Hugging Face é baixado no primeiro start, mas o commit do modelo e do backbone ficam fixados em `HF_MODEL_REVISION`/`HF_BASE_MODEL_REVISION`; produção não acompanha `main`. O `ffmpeg` no container permite decodificar WebM/Opus produzido pelo `MediaRecorder` do navegador, além de WAV e MP3.
 - **Docker Compose:** ciclo local repetível com Postgres, Redis e LocalStack (S3/SQS).
