@@ -84,16 +84,6 @@ pnpm test:e2e
 
 O bootstrap do LocalStack aplica automaticamente a regra CORS necessária ao bucket `ninar-audio`. Isso evita o `Failed to fetch` do navegador durante o `PUT` pré-assinado.
 
-## Homologação AWS
-
-1. Copie `.env.hml.example` para `.env.hml` e preencha as saídas do Terraform, o token do modelo e os domínios.
-2. Rode Terraform dentro de `infra/aws` com `terraform init`, `terraform plan -var-file=...` e `terraform apply`.
-3. Construa e publique as quatro imagens no ECR.
-4. Instale k3s na EC2 (o `user-data.sh.tftpl` faz isso) e copie o kubeconfig com acesso restrito.
-5. Crie o Secret Kubernetes a partir do `.env.hml` e aplique `kubectl apply -k infra/k8s/overlays/hml`.
-
-A EC2 recebe uma IAM Instance Profile com menor privilégio e IMDSv2 obrigatório. Em produção, substitua o `.env.hml` por SSM Parameter Store/Secrets Manager e RDS/ElastiCache antes de escalar.
-
 ## Deploy automatizado
 
 O repositório inclui um workflow de deploy para ambientes com Docker Compose e
