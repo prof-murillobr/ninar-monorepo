@@ -38,19 +38,19 @@ describe('WorkerService', () => {
   it('removes the audio after completing the classification', async () => {
     const { process, markCompleted, deleteObject } = createSubject();
 
-    await process(JSON.stringify({ analysisId: 'analysis-1', objectKey: 'analyses/analysis-1/audio.wav' }));
+    await process(s3Event('11111111-1111-4111-8111-111111111111', 'audio.wav'));
 
-    expect(markCompleted).toHaveBeenCalledWith('analysis-1', result);
-    expect(deleteObject).toHaveBeenCalledWith('analyses/analysis-1/audio.wav');
+    expect(markCompleted).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', result);
+    expect(deleteObject).toHaveBeenCalledWith('analyses/11111111-1111-4111-8111-111111111111/audio.wav');
   });
 
   it('retries cleanup for an already completed analysis', async () => {
     const { process, getStatus, deleteObject, markProcessing } = createSubject();
     getStatus.mockResolvedValue('completed');
 
-    await process(JSON.stringify({ analysisId: 'analysis-2', objectKey: 'analyses/analysis-2/audio.wav' }));
+    await process(s3Event('22222222-2222-4222-8222-222222222222', 'audio.wav'));
 
-    expect(deleteObject).toHaveBeenCalledWith('analyses/analysis-2/audio.wav');
+    expect(deleteObject).toHaveBeenCalledWith('analyses/22222222-2222-4222-8222-222222222222/audio.wav');
     expect(markProcessing).not.toHaveBeenCalled();
   });
 
@@ -58,9 +58,18 @@ describe('WorkerService', () => {
     const { process, markFailed, deleteObject, classify } = createSubject();
     classify.mockRejectedValue(new Error('classifier unavailable'));
 
-    await expect(process(JSON.stringify({ analysisId: 'analysis-3', objectKey: 'analyses/analysis-3/audio.wav' }))).rejects.toThrow('classifier unavailable');
+    await expect(process(s3Event('33333333-3333-4333-8333-333333333333', 'audio.wav'))).rejects.toThrow('classifier unavailable');
 
-    expect(markFailed).toHaveBeenCalledWith('analysis-3', 'classifier unavailable');
+    expect(markFailed).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333', 'classifier unavailable');
     expect(deleteObject).not.toHaveBeenCalled();
   });
 });
+
+function s3Event(analysisId: string, filename: string): string {
+  return JSON.stringify({
+    Records: [{
+      eventName: 'ObjectCreated:Put',
+      s3: { object: { key: `analyses/${analysisId}/${filename}` } },
+    }],
+  });
+}

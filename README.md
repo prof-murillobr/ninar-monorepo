@@ -18,7 +18,7 @@ substitui orientação profissional de saúde.
 - processamento assíncrono com fila, worker, retentativas e DLQ;
 - isolamento do runtime Python/IA em um serviço FastAPI independente;
 - PostgreSQL como fonte de verdade e Redis como otimização descartável;
-- ambiente local reproduzível com Docker Compose e LocalStack;
+- ambiente local reproduzível com Docker Compose e Floci;
 - testes unitários, validação de tipos, lint e teste E2E com Playwright;
 - preocupação com privacidade, limites do modelo e comunicação responsável.
 
@@ -35,10 +35,10 @@ substitui orientação profissional de saúde.
 │ gravação/UI  │          │ casos de uso + adapters     │
 └──────┬───────┘          └──────┬──────────┬───────────┘
        │                         │          │
-       │ upload pré-assinado     │          │ publicação
+       │ upload pré-assinado     │          │ evento S3 → SQS
        ▼                         ▼          ▼
 ┌──────────────┐          ┌───────────┐  ┌──────────────┐
-│ S3/LocalStack│          │PostgreSQL │  │ SQS/LocalStack│
+│ S3/Floci     │          │PostgreSQL │  │ SQS/Floci     │
 │ áudio        │          │fonte real │  │ fila + DLQ    │
 └──────────────┘          └───────────┘  └──────┬───────┘
                                                  │ consumo
@@ -50,7 +50,7 @@ substitui orientação profissional de saúde.
                          Redis: cache de leituras concluídas
 ```
 
-O caminho local usa LocalStack para emular S3 e SQS sem depender de uma conta
+O caminho local usa Floci para emular S3 e SQS sem depender de uma conta
 cloud. Os adapters preservam os contratos necessários para trocar a
 implementação por serviços gerenciados quando isso fizer sentido.
 
@@ -73,18 +73,21 @@ de infraestrutura e manutenção do código.
 
 ### Upload direto para object storage
 
-O áudio não atravessa a API. O frontend solicita uma URL pré-assinada e envia o
-arquivo diretamente ao storage. Isso reduz memória, latência e pressão sobre o
-processo HTTP da API.
+O áudio não atravessa a API. O frontend solicita um plano de upload e envia o
+arquivo diretamente ao storage. Arquivos curtos usam um único `PUT`; acima de
+8 MiB, o envio é multipart, em partes de 5 MiB, com retry apenas da parte que
+falhar. Isso reduz memória, latência e pressão sobre o processo HTTP da API.
 
 ### Fila e worker
 
-A API registra e enfileira rapidamente. O worker consome, baixa o áudio, chama a
-inferência, persiste o resultado e só então confirma a mensagem. Esse desenho
-absorve picos, permite retentativas e escala o processamento de forma
-independente.
+Antes de devolver o plano de upload, a API registra a análise como
+`upload_pending`. Ao concluir o objeto, a notificação S3 → SQS inicia o
+processamento — o navegador não precisa avisar a API novamente. O worker
+consome o evento, baixa o áudio, chama a inferência, persiste o resultado e só
+então confirma a mensagem. Esse desenho absorve picos, permite retentativas e
+escala o processamento de forma independente.
 
-SQS/LocalStack foi escolhido para este cenário por oferecer fila, visibilidade,
+SQS/Floci foi escolhido para este cenário por oferecer fila, visibilidade,
 retentativa e DLQ sem o custo operacional de manter Kafka. Kafka seria uma
 alternativa quando throughput muito alto, replay de eventos ou vários grupos de
 consumidores fossem requisitos centrais.
@@ -107,10 +110,10 @@ O runtime de inferência fica isolado das dependências Node/NestJS. Isso permit
 trocar o checkpoint, atualizar o modelo ou mover a inferência para outro
 serviço sem reescrever a API. A revisão do modelo fica fixada por commit.
 
-### Docker Compose e LocalStack
+### Docker Compose e Floci
 
 Compose reduz o tempo entre alteração e feedback e reproduz localmente API,
-worker, inferência, PostgreSQL, Redis e storage/fila. LocalStack mantém o
+worker, inferência, PostgreSQL, Redis e storage/fila. Floci mantém o
 contrato de S3/SQS sem exigir recursos cloud durante o desenvolvimento.
 
 Os manifestos em `infra/k8s` representam uma trilha de evolução para k3s, mas
@@ -119,10 +122,10 @@ Kubernetes não é necessário para executar o ambiente local atual.
 ## Fluxo de uma análise
 
 1. A pessoa grava até 12 segundos de áudio no navegador.
-2. O frontend solicita uma URL pré-assinada à API.
-3. O áudio é enviado diretamente ao storage.
-4. A API cria a análise no PostgreSQL e publica uma mensagem na fila.
-5. O worker consome a mensagem e chama o serviço FastAPI.
+2. O frontend solicita um plano de upload; a análise é criada como `upload_pending`.
+3. O áudio é enviado diretamente ao storage, com multipart e retry por parte quando necessário.
+4. O S3 publica o evento de objeto concluído no SQS.
+5. O worker consome o evento e chama o serviço FastAPI.
 6. O resultado é persistido e o áudio temporário é removido após o processamento.
 7. O frontend consulta o estado até `completed` ou `failed` e atualiza o histórico.
 
@@ -130,7 +133,7 @@ Kubernetes não é necessário para executar o ambiente local atual.
 
 - SOLID e portas/adapters na API;
 - validação de DTOs, CORS configurável, Helmet e rate limit;
-- health checks para API, banco, Redis, LocalStack e inferência;
+- health checks para API, banco, Redis, Floci e inferência;
 - logs estruturados e endpoint de métricas;
 - retentativas da fila e DLQ;
 - testes unitários para casos de uso, adapters e worker;
@@ -154,8 +157,8 @@ Serviços principais:
 - Swagger: `http://localhost:3001/docs`;
 - inferência: `http://localhost:8000/health`.
 
-O LocalStack cria automaticamente o bucket, a fila e a DLQ necessárias para o
-fluxo local.
+O Floci cria automaticamente o bucket, a fila, a DLQ e a notificação S3 → SQS
+necessários para o fluxo local.
 
 ## Testes
 
@@ -168,7 +171,7 @@ pnpm build
 ```
 
 O teste E2E usa Chromium, gera um WAV em memória, valida o preflight CORS,
-envia o objeto ao LocalStack, aguarda worker/classificador e confirma o
+envia o objeto ao Floci, aguarda worker/classificador e confirma o
 resultado renderizado no frontend.
 
 ## Deploy e segurança

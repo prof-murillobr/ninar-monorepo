@@ -35,15 +35,15 @@ O desenvolvimento e a validação inicial acontecem **inteiramente na máquina l
 
 | Ambiente | Runtime | Serviços locais/emulados | Objetivo |
 | --- | --- | --- | --- |
-| Desenvolvimento | Docker Compose | PostgreSQL, Redis e LocalStack (S3/SQS/DLQ) | Construir e depurar com custo zero |
+| Desenvolvimento | Docker Compose | PostgreSQL, Redis e Floci (S3/SQS/DLQ) | Construir e depurar com custo zero |
 | Validação Kubernetes | k3s local | Os mesmos serviços locais/emulados | Validar manifests, Ingress e rede entre pods |
 | Nuvem | k3s em EC2 | S3 e SQS/DLQ reais; banco/cache locais no MVP | Publicar o fluxo já validado |
 
-O código usa o AWS SDK nos três ambientes. Localmente, `AWS_ENDPOINT_URL` aponta para o LocalStack e credenciais de teste são usadas; na EC2 essa variável não existe e a IAM Role da instância fornece credenciais temporárias para S3 e SQS reais.
+O código usa o AWS SDK. No ambiente Docker atual, `AWS_ENDPOINT_URL` aponta para o Floci e credenciais de teste são usadas; os adapters mantêm a infraestrutura substituível.
 
 ## Estado da implementação local
 
-- **Fase 1 concluída:** monorepo com Next.js, NestJS, worker NestJS, FastAPI, Dockerfiles e Compose; PostgreSQL, Redis e LocalStack sobem juntos, com bucket S3 e filas SQS criados automaticamente.
+- **Fase 1 concluída:** monorepo com Next.js, NestJS, worker NestJS, FastAPI, Dockerfiles e Compose; PostgreSQL, Redis e Floci sobem juntos, com bucket S3, filas SQS e notificação S3 → SQS criados automaticamente.
 - **Fase 2 concluída:** o serviço FastAPI carrega localmente o checkpoint `dontcryai/dontcry` (HuBERT + cabeça customizada), expõe `/health` e `/classify`, normaliza áudio para mono/16 kHz e retorna probabilidades.
 - **Fase 3 concluída:** endpoints de análise, upload pré-assinado, persistência e integração real worker → S3 → classificador → resultado. A API segue portas/adapters hexagonais e o worker é idempotente para mensagens redeliveradas.
 - **Fase 4 concluída:** frontend com upload, gravação via MediaRecorder, waveform, polling, resultado com confiança, histórico e exclusão.
@@ -68,9 +68,9 @@ O código usa o AWS SDK nos três ambientes. Localmente, `AWS_ENDPOINT_URL` apon
 1. Criar o monorepo com `apps/web`, `apps/api`, `apps/worker`, `apps/inference`, `packages/contracts` e `infra`.
 2. Configurar TypeScript, lint, formatação, variáveis de ambiente e README.
 3. Criar Dockerfiles para web, API, worker e inferência.
-4. Criar Docker Compose com PostgreSQL, Redis e LocalStack (S3/SQS) para desenvolvimento.
+4. Criar Docker Compose com PostgreSQL, Redis e Floci (S3/SQS) para desenvolvimento.
 5. Espelhar os serviços no k3s local antes de publicar na EC2.
-6. Criar filas `analyses` e `analyses-dlq` e o bucket `ninar-audio` automaticamente ao iniciar o LocalStack.
+6. Criar filas `analyses` e `analyses-dlq`, o bucket `ninar-audio` e a notificação S3 → SQS automaticamente ao iniciar o Floci.
 7. Manter arquivos `.env.local.example` e `.env.production.example`; o adapter AWS deve variar apenas por configuração, nunca por regra de negócio.
 
 **Pronto quando:** um único comando sobe todos os serviços locais, cria S3/SQS simulados e os health checks respondem.
@@ -87,15 +87,14 @@ O código usa o AWS SDK nos três ambientes. Localmente, `AWS_ENDPOINT_URL` apon
 
 ### Fase 3 — API e processamento assíncrono
 
-1. Criar `POST /analyses/upload-url`: gera uma URL pré-assinada S3 curta.
-2. Criar `POST /analyses`: cria o registro com status `queued` e publica uma mensagem.
-3. Criar worker TypeScript sem servidor HTTP: faz long polling na SQS, baixa o objeto S3, chama o classificador e persiste resultado.
-4. Implementar estados `queued`, `processing`, `completed`, `failed` e `expired`.
-5. Configurar retentativas exponenciais e DLQ.
-6. Expor `GET /analyses/:id` e `GET /analyses`.
-7. Executar o fluxo completo usando LocalStack: upload, mensagem, consumo, classificação e consulta de resultado.
+1. Criar `POST /analyses/upload-url`: registra o upload como `upload_pending` e gera um plano pré-assinado (direto ou multipart).
+2. Criar worker TypeScript sem servidor HTTP: faz long polling na SQS, baixa o objeto S3, chama o classificador e persiste resultado.
+3. Implementar estados `upload_pending`, `processing`, `completed` e `failed`.
+4. Configurar retentativas exponenciais e DLQ.
+5. Expor `GET /analyses/:id` e `GET /analyses`.
+6. Executar o fluxo completo usando Floci: upload, evento S3, consumo, classificação e consulta de resultado.
 
-**Incremento implementado:** a API já possui `POST /analyses/upload-url`, `POST /analyses`, `GET /analyses` e `GET /analyses/:id`. O núcleo segue Arquitetura Hexagonal: casos de uso dependem de portas, enquanto S3, SQS, PostgreSQL e Redis são adaptadores substituíveis. O worker baixa o objeto, chama o FastAPI, persiste o resultado e só remove a mensagem depois da conclusão.
+**Incremento implementado:** a API possui `POST /analyses/upload-url`, `POST /analyses/:id/complete-upload`, `GET /analyses` e `GET /analyses/:id`. O núcleo segue Arquitetura Hexagonal: casos de uso dependem de portas, enquanto S3, SQS, PostgreSQL e Redis são adaptadores substituíveis. O worker recebe o evento S3 no SQS, baixa o objeto, chama o FastAPI, persiste o resultado e só remove a mensagem depois da conclusão.
 
 **Pronto quando:** upload não bloqueia a requisição, a mensagem só é removida da SQS após a persistência e uma falha transitória é reprocessada sem duplicar o resultado.
 
@@ -113,7 +112,7 @@ O código usa o AWS SDK nos três ambientes. Localmente, `AWS_ENDPOINT_URL` apon
 
 ### Fase 5 — EC2 e k3s na AWS
 
-1. Iniciar esta fase somente após o fluxo E2E ter passado localmente com LocalStack.
+1. Iniciar esta fase somente após o fluxo E2E ter passado localmente com Floci.
 2. Provisionar EC2, Security Group, Elastic IP opcional, ECR, S3, SQS/DLQ e IAM Instance Profile com Terraform.
 3. Instalar k3s na EC2 e configurar Traefik Ingress para HTTPS e roteamento de `web` e `api`.
 4. Publicar imagens no ECR e aplicar manifests/kustomize no k3s.

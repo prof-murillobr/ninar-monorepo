@@ -46,7 +46,7 @@ export class PostgresAnalysisRepository implements AnalysisRepositoryPort, OnMod
   async create(input: NewAnalysis): Promise<Analysis> {
     const result = await this.pool.query<AnalysisRow>(
       `INSERT INTO analyses (id, object_key, original_filename, content_type, status)
-       VALUES ($1, $2, $3, $4, 'queued')
+       VALUES ($1, $2, $3, $4, 'upload_pending')
        RETURNING *`,
       [input.id, input.objectKey, input.originalFilename, input.contentType],
     );

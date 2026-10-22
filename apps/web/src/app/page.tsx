@@ -15,6 +15,30 @@ const statusFor = (status: Status) => ({ upload_pending: 'Aguardando upload', qu
 const formatDate = (value: string) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 const normalizedContentType = (file: File) => file.type.split(';', 1)[0].trim().toLowerCase() || 'audio/webm';
 
+type UploadPlan = {
+  analysisId: string;
+  objectKey: string;
+  upload: { kind: 'single'; uploadUrl: string } | { kind: 'multipart'; uploadId: string; partSize: number; partUrls: string[] };
+};
+
+const sleep = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+async function uploadWithRetry(url: string, body: BodyInit, headers?: HeadersInit): Promise<Response> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(url, { method: 'PUT', headers, body });
+      if (response.ok) return response;
+      if (response.status < 500 && response.status !== 429) throw new Error('O upload do áudio falhou.');
+      lastError = new Error('A conexão falhou durante o upload.');
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('A conexão falhou durante o upload.');
+    }
+    await sleep(400 * (attempt + 1));
+  }
+  throw lastError ?? new Error('O upload do áudio falhou.');
+}
+
 async function apiError(response: Response, fallback: string): Promise<Error> {
   try {
     const body = (await response.json()) as { message?: string | string[] };
@@ -180,13 +204,29 @@ export default function Home() {
     setCurrent(null);
     try {
       const contentType = normalizedContentType(file);
-      const uploadResponse = await fetch(`${API_URL}/analyses/upload-url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, contentType }) });
+      const uploadResponse = await fetch(`${API_URL}/analyses/upload-url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, contentType, size: file.size }) });
       if (!uploadResponse.ok) throw await apiError(uploadResponse, 'A API não gerou a URL de upload.');
-      const upload = (await uploadResponse.json()) as { analysisId: string; objectKey: string; uploadUrl: string };
-      const putResponse = await fetch(upload.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
-      if (!putResponse.ok) throw new Error('O upload do áudio falhou.');
-      const createResponse = await fetch(`${API_URL}/analyses`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysisId: upload.analysisId, objectKey: upload.objectKey, originalFilename: file.name, contentType }) });
-      if (!createResponse.ok) throw await apiError(createResponse, 'A API não conseguiu enfileirar a análise.');
+      const upload = (await uploadResponse.json()) as UploadPlan;
+      if (upload.upload.kind === 'single') {
+        await uploadWithRetry(upload.upload.uploadUrl, file, { 'Content-Type': contentType });
+      } else {
+        const completedParts: Array<{ partNumber: number; etag: string }> = [];
+        for (const [index, partUrl] of upload.upload.partUrls.entries()) {
+          const part = file.slice(index * upload.upload.partSize, Math.min((index + 1) * upload.upload.partSize, file.size));
+          const response = await uploadWithRetry(partUrl, part);
+          const etag = response.headers.get('etag');
+          if (!etag) throw new Error('O storage não confirmou uma parte do upload.');
+          completedParts.push({ partNumber: index + 1, etag });
+        }
+        const completeResponse = await fetch(`${API_URL}/analyses/${upload.analysisId}/complete-upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uploadId: upload.upload.uploadId, parts: completedParts }),
+        });
+        if (!completeResponse.ok) throw await apiError(completeResponse, 'Não foi possível concluir o upload multipart.');
+      }
+      // S3 emits the queue event only after the object is complete. There is no
+      // client-side call to enqueue processing.
       await waitForResult(upload.analysisId);
       await loadHistory();
     } catch (error) {

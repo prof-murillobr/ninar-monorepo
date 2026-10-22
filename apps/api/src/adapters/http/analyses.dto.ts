@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsString, IsUUID, Length, Matches, Max, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 const AUDIO_CONTENT_TYPES = [
   'audio/wav',
@@ -26,6 +27,33 @@ export class CreateUploadUrlDto {
   @Transform(({ value }) => normalizeAudioContentType(value))
   @IsIn(AUDIO_CONTENT_TYPES)
   contentType!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(100 * 1024 * 1024)
+  size!: number;
+}
+
+class MultipartPartDto {
+  @IsInt()
+  @Min(1)
+  @Max(10_000)
+  partNumber!: number;
+
+  @IsString()
+  @Length(1, 512)
+  etag!: string;
+}
+
+export class CompleteMultipartUploadDto {
+  @IsString()
+  @Length(1, 1024)
+  uploadId!: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MultipartPartDto)
+  parts!: MultipartPartDto[];
 }
 
 export class CreateAnalysisDto {

@@ -26,17 +26,18 @@ services:
       timeout: 5s
       retries: 10
 
-  localstack:
-    image: localstack/localstack:3.8.1
+  floci:
+    image: floci/floci:1.5.21-compat
+    user: "0:0"
     environment:
-      SERVICES: s3,sqs
-      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
-      DEBUG: "0"
+      FLOCI_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      FLOCI_HOSTNAME: floci
+      FLOCI_STORAGE_MODE: persistent
       S3_BUCKET: ${S3_BUCKET:-ninar-audio}
       NINAR_WEB_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in .env.production}
     volumes:
-      - localstack_data:/var/lib/localstack
-      - ./infra/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
+      - floci_data:/app/data
+      - ./infra/floci/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
     networks:
       default: {}
       edge:
@@ -74,11 +75,10 @@ services:
       NODE_ENV: production
       PORT: 3001
       AWS_REGION: ${AWS_REGION:?Set AWS_REGION in .env.production}
-      AWS_ENDPOINT_URL: http://localstack:4566
-      S3_ENDPOINT: http://localstack:4566
+      AWS_ENDPOINT_URL: http://floci:4566
+      S3_ENDPOINT: http://floci:4566
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:?Set S3_PUBLIC_ENDPOINT in .env.production}
       S3_BUCKET: ${S3_BUCKET:-ninar-audio}
-      SQS_QUEUE_URL: http://localstack:4566/000000000000/analyses
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       POSTGRES_URL: ${POSTGRES_URL:?Set POSTGRES_URL in .env.production}
@@ -93,7 +93,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      localstack:
+      floci:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -108,10 +108,10 @@ services:
     environment:
       NODE_ENV: production
       AWS_REGION: ${AWS_REGION:?Set AWS_REGION in .env.production}
-      AWS_ENDPOINT_URL: http://localstack:4566
-      S3_ENDPOINT: http://localstack:4566
+      AWS_ENDPOINT_URL: http://floci:4566
+      S3_ENDPOINT: http://floci:4566
       S3_BUCKET: ${S3_BUCKET:-ninar-audio}
-      SQS_QUEUE_URL: http://localstack:4566/000000000000/analyses
+      SQS_QUEUE_URL: http://floci:4566/000000000000/analyses
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       POSTGRES_URL: ${POSTGRES_URL:?Set POSTGRES_URL in .env.production}
@@ -123,7 +123,7 @@ services:
         condition: service_healthy
       inference:
         condition: service_healthy
-      localstack:
+      floci:
         condition: service_healthy
     restart: unless-stopped
 
@@ -147,7 +147,7 @@ volumes:
   postgres_data:
   redis_data:
   hf_cache:
-  localstack_data:
+  floci_data:
 
 networks:
   default:

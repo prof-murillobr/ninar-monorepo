@@ -4,7 +4,10 @@ import { ANALYSIS_REPOSITORY, CLASSIFIER, OBJECT_STORAGE } from './domain/analys
 import type { AnalysisRepositoryPort, ClassifierPort, ObjectStoragePort } from './domain/analysis.js';
 import type { ClassificationResult } from './domain/analysis.js';
 
-type AnalysisMessage = { analysisId?: string; objectKey?: string; s3Key?: string };
+type S3EventRecord = {
+  eventName?: string;
+  s3?: { object?: { key?: string } };
+};
 
 @Injectable()
 export class WorkerService implements OnModuleInit, OnApplicationShutdown {
@@ -67,16 +70,18 @@ export class WorkerService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async process(body: string) {
-    const payload = this.parseMessage(body);
-    const objectKey = payload.objectKey ?? payload.s3Key;
-    if (!payload.analysisId || !objectKey) throw new Error('Message must contain analysisId and objectKey.');
+    const payload = this.parseS3Event(body);
+    // Floci (like S3) emits a test event when a notification target is
+    // configured. It has no Records array and must not create a job.
+    if (!payload) return;
+    const { analysisId, objectKey } = payload;
 
-    if ((await this.repository.getStatus(payload.analysisId)) === 'completed') {
+    if ((await this.repository.getStatus(analysisId)) === 'completed') {
       await this.storage.deleteObject(objectKey);
-      this.logger.log(JSON.stringify({ event: 'message_already_completed', analysisId: payload.analysisId }));
+      this.logger.log(JSON.stringify({ event: 'message_already_completed', analysisId }));
       return;
     }
-    await this.repository.markProcessing(payload.analysisId);
+    await this.repository.markProcessing(analysisId);
     let result: ClassificationResult;
     try {
       const audio = await this.storage.getObject(objectKey);
@@ -87,24 +92,36 @@ export class WorkerService implements OnModuleInit, OnApplicationShutdown {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await this.repository.markFailed(payload.analysisId, message);
+      await this.repository.markFailed(analysisId, message);
       throw error;
     }
-    await this.repository.markCompleted(payload.analysisId, result);
+    await this.repository.markCompleted(analysisId, result);
     try {
       await this.storage.deleteObject(objectKey);
     } catch (error) {
-      this.logger.error(JSON.stringify({ event: 'audio_cleanup_failed', analysisId: payload.analysisId, objectKey, error: String(error) }));
+      this.logger.error(JSON.stringify({ event: 'audio_cleanup_failed', analysisId, objectKey, error: String(error) }));
       throw error;
     }
-    this.logger.log(JSON.stringify({ event: 'analysis_completed', analysisId: payload.analysisId, objectKey }));
+    this.logger.log(JSON.stringify({ event: 'analysis_completed', analysisId, objectKey }));
   }
 
-  private parseMessage(body: string): AnalysisMessage {
+  private parseS3Event(body: string): { analysisId: string; objectKey: string } | null {
+    let event: { Records?: S3EventRecord[] };
     try {
-      return JSON.parse(body) as AnalysisMessage;
+      event = JSON.parse(body) as { Records?: S3EventRecord[] };
     } catch {
       throw new Error('Invalid JSON message.');
     }
+    const record = event.Records?.find((candidate) => /^(s3:)?ObjectCreated:/.test(candidate.eventName ?? ''));
+    if (!record) return null;
+    const encodedKey = record.s3?.object?.key;
+    if (!encodedKey) throw new Error('S3 event does not contain an object key.');
+    const objectKey = decodeURIComponent(encodedKey.replace(/\+/g, ' '));
+    const match = /^analyses\/([0-9a-f-]{36})\/.+$/i.exec(objectKey);
+    if (!match) {
+      this.logger.warn(JSON.stringify({ event: 'ignored_s3_object', objectKey }));
+      return null;
+    }
+    return { analysisId: match[1], objectKey };
   }
 }

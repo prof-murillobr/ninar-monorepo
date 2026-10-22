@@ -16,19 +16,20 @@ services:
     ports:
       - "6379:6379"
 
-  localstack:
-    image: localstack/localstack:3.8.1
+  floci:
+    image: floci/floci:1.5.21-compat
+    user: "0:0"
     environment:
-      SERVICES: sqs,s3
-      AWS_DEFAULT_REGION: us-east-1
-      DEBUG: 0
+      FLOCI_DEFAULT_REGION: us-east-1
+      FLOCI_HOSTNAME: floci
+      FLOCI_STORAGE_MODE: persistent
       S3_BUCKET: ninar-audio
       NINAR_WEB_ORIGIN: http://localhost:3000
     ports:
       - "4566:4566"
     volumes:
-      - ./infra/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
-      - localstack_data:/var/lib/localstack
+      - ./infra/floci/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
+      - floci_data:/app/data
 
   inference:
     build:
@@ -54,17 +55,16 @@ services:
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: http://localhost:3000
       AWS_REGION: us-east-1
-      AWS_ENDPOINT_URL: http://localstack:4566
-      S3_ENDPOINT: http://localstack:4566
+      AWS_ENDPOINT_URL: http://floci:4566
+      S3_ENDPOINT: http://floci:4566
       S3_PUBLIC_ENDPOINT: http://localhost:4566
       S3_BUCKET: ninar-audio
-      SQS_QUEUE_URL: http://localstack:4566/000000000000/analyses
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     ports:
       - "3001:3001"
     depends_on:
-      - localstack
+      - floci
       - postgres
       - redis
 
@@ -75,17 +75,17 @@ services:
       NODE_ENV: development
       POSTGRES_URL: postgres://ninar:ninar_local@postgres:5432/ninar
       AWS_REGION: us-east-1
-      AWS_ENDPOINT_URL: http://localstack:4566
-      S3_ENDPOINT: http://localstack:4566
+      AWS_ENDPOINT_URL: http://floci:4566
+      S3_ENDPOINT: http://floci:4566
       S3_BUCKET: ninar-audio
-      SQS_QUEUE_URL: http://localstack:4566/000000000000/analyses
+      SQS_QUEUE_URL: http://floci:4566/000000000000/analyses
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       CLASSIFIER_URL: http://inference:8000
       WORKER_ENABLED: "true"
       WORKER_CONCURRENCY: "1"
     depends_on:
-      - localstack
+      - floci
       - inference
       - postgres
 
@@ -103,5 +103,5 @@ services:
 
 volumes:
   postgres_data:
-  localstack_data:
+  floci_data:
   hf_cache:
