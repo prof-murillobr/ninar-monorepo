@@ -58,6 +58,32 @@ jobs:
 
           printf 'Release %s synced to %s\n' "$GITHUB_SHA" "$deploy_dir"
 
+      - name: Initialize analytics secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_dir="${NINAR_DEPLOY_DIR:-$HOME/apps/ninar}"
+          env_file="$deploy_dir/.env.production"
+
+          # The environment file is deliberately persistent and excluded from
+          # releases. Generate these one-time values only for installations
+          # created before analytics existed; never replace a configured secret.
+          append_if_missing() {
+            local key="$1"
+            local value="$2"
+
+            if ! grep -qE "^${key}=.+" "$env_file"; then
+              printf '\n%s=%s\n' "$key" "$value" >> "$env_file"
+            fi
+          }
+
+          append_if_missing UMAMI_DB_PASSWORD "$(openssl rand -hex 32)"
+          append_if_missing UMAMI_APP_SECRET "$(openssl rand -hex 32)"
+          append_if_missing UMAMI_TWO_FACTOR_ENCRYPTION_KEY "$(openssl rand -hex 32)"
+
+          analytics_domain="$(sed -n 's/^ANALYTICS_DOMAIN=//p' "$env_file" | head -n 1)"
+          append_if_missing NEXT_PUBLIC_UMAMI_HOST_URL "https://${analytics_domain:-analytics.ninar-app.com}"
+
       - name: Validate production Compose
         shell: bash
         run: |
