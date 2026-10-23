@@ -26,6 +26,42 @@ services:
       timeout: 5s
       retries: 10
 
+  umami-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:?Set UMAMI_DB_PASSWORD in .env.production}
+    volumes:
+      - umami_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  umami:
+    image: docker.umami.is/umami-software/umami:3.4.1@sha256:e69d1a7932e9dab0fc523edc7be1f3a53f3c261f57856fc2167ae74a8fc022e8
+    init: true
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:?Set UMAMI_DB_PASSWORD in .env.production}@umami-db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:?Set UMAMI_APP_SECRET in .env.production}
+      TWO_FACTOR_ENCRYPTION_KEY: ${UMAMI_TWO_FACTOR_ENCRYPTION_KEY:?Set UMAMI_TWO_FACTOR_ENCRYPTION_KEY in .env.production}
+    networks:
+      default: {}
+      edge:
+        aliases: [ninar-analytics]
+    depends_on:
+      umami-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:3000/api/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
   floci:
     image: floci/floci:1.5.21-compat
     user: "0:0"
@@ -132,6 +168,10 @@ services:
       context: ./apps/web
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env.production}
+        NEXT_PUBLIC_UMAMI_HOST_URL: ${NEXT_PUBLIC_UMAMI_HOST_URL:?Set NEXT_PUBLIC_UMAMI_HOST_URL in .env.production}
+        # Empty on the first deployment: create the site in Umami, set its UUID,
+        # then rebuild web to enable the tracker.
+        NEXT_PUBLIC_UMAMI_WEBSITE_ID: ${NEXT_PUBLIC_UMAMI_WEBSITE_ID:-}
     environment:
       NODE_ENV: production
     networks:
@@ -146,6 +186,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  umami_data:
   hf_cache:
   floci_data:
 

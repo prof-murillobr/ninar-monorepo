@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { track } from '../lib/analytics';
 
 type Status = 'upload_pending' | 'queued' | 'processing' | 'completed' | 'failed';
 type Prediction = { category: string; confidence: number };
@@ -170,6 +171,7 @@ export default function Home() {
         void submitAnalysis(file);
       };
       recorder.start();
+      track('recording_started');
       recorderRef.current = recorder;
       setRecordingDuration(0);
       // eslint-disable-next-line react-hooks/purity -- this runs from the user interaction handler.
@@ -180,6 +182,7 @@ export default function Home() {
       setNotice(null);
       recordingTimeoutRef.current = window.setTimeout(() => stopRecording(startedAt), MAX_RECORDING_SECONDS * 1000);
     } catch {
+      track('recording_permission_denied');
       setNotice('Não foi possível acessar o microfone. Verifique a permissão e tente novamente.');
     }
   }
@@ -190,7 +193,14 @@ export default function Home() {
       if (!response.ok) throw new Error('Não foi possível consultar o processamento.');
       const analysis = (await response.json()) as Analysis;
       setCurrent(analysis);
-      if (analysis.status === 'completed' || analysis.status === 'failed') return;
+      if (analysis.status === 'completed') {
+        track('analysis_completed');
+        return;
+      }
+      if (analysis.status === 'failed') {
+        track('analysis_failed');
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
     throw new Error('O processamento demorou mais que o esperado; consulte o histórico.');
@@ -203,6 +213,7 @@ export default function Home() {
     setNotice(null);
     setCurrent(null);
     try {
+      track('analysis_upload_started');
       const contentType = normalizedContentType(file);
       const uploadResponse = await fetch(`${API_URL}/analyses/upload-url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, contentType, size: file.size }) });
       if (!uploadResponse.ok) throw await apiError(uploadResponse, 'A API não gerou a URL de upload.');
@@ -227,9 +238,11 @@ export default function Home() {
       }
       // S3 emits the queue event only after the object is complete. There is no
       // client-side call to enqueue processing.
+      track('analysis_upload_completed');
       await waitForResult(upload.analysisId);
       await loadHistory();
     } catch (error) {
+      track('analysis_failed');
       setNotice(error instanceof Error ? error.message : 'Não foi possível processar o áudio.');
     } finally {
       setBusy(false);
@@ -286,7 +299,7 @@ export default function Home() {
       </div>
       {selectedHistory && <div className={`history-modal ${historyClosing ? 'is-closing' : ''}`} role="presentation" onClick={closeHistoryModal}><div className="history-modal-panel" role="dialog" aria-modal="true" aria-labelledby="history-modal-title" onClick={(event) => event.stopPropagation()}><div className="history-modal-header"><div><p className="result-kicker">histórico</p><h2 id="history-modal-title">Um momento de cuidado</h2></div><button type="button" className="history-modal-close" aria-label="Fechar resultado" onClick={closeHistoryModal}>×</button></div><ResultCard analysis={selectedHistory} onDelete={requestDelete} /></div></div>}
       {deleteTarget && <div className="history-modal delete-confirm-overlay" role="presentation" onClick={() => deletingId === null && setDeleteTarget(null)}><div className="delete-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" onClick={(event) => event.stopPropagation()}><div className="delete-confirm-icon" aria-hidden="true">♡</div><p className="result-kicker">um momento de cuidado</p><h2 id="delete-dialog-title">Excluir este registro?</h2><p className="delete-confirm-copy">O áudio e o resultado serão removidos deste histórico.</p><div className="delete-confirm-actions"><button type="button" className="delete-cancel-button" disabled={deletingId !== null} onClick={() => setDeleteTarget(null)}>Manter registro</button><button type="button" className="delete-confirm-button" disabled={deletingId !== null} onClick={() => void deleteAnalysis(deleteTarget.id)}>{deletingId === deleteTarget.id ? 'Excluindo…' : 'Excluir registro'}</button></div></div></div>}
-      <footer className="flex flex-wrap justify-between gap-3 border-t border-white/70 pt-5 text-xs font-semibold text-[#a393a2]"><span>feito para acolher · nunca substitui um profissional de saúde</span><span>Next.js · NestJS · IA privada</span></footer>
+      <footer className="flex flex-wrap justify-between gap-3 border-t border-white/70 pt-5 text-xs font-semibold text-[#a393a2]"><span>feito para acolher · nunca substitui um profissional de saúde</span><span className="flex gap-3"><a className="hover:text-[#806f82] hover:underline" href="/privacidade">privacidade</a><span>Next.js · NestJS · IA privada</span></span></footer>
     </main>
   </div>;
 }

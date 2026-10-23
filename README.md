@@ -104,6 +104,24 @@ frontend. O TTL é curto, a exclusão invalida a chave e nenhuma informação
 essencial depende exclusivamente dele. Se o cache falhar, a API pode consultar
 o PostgreSQL.
 
+### Métricas de uso
+
+O projeto inclui Umami auto-hospedado, isolado em seu próprio PostgreSQL. Ele
+mede visitas e um funil mínimo de produto sem cookies: início de gravação,
+início e conclusão de upload, análise concluída ou falha. Os eventos não levam
+ID de análise, nome de arquivo, áudio, resultado nem hipótese de cuidado. O
+tracker respeita `Do Not Track` e só é carregado quando as variáveis públicas
+do Umami estiverem configuradas.
+
+Para ativar em produção:
+
+1. Gere `UMAMI_APP_SECRET` e `UMAMI_TWO_FACTOR_ENCRYPTION_KEY` com `openssl rand -hex 32` e complete as variáveis `UMAMI_*` do `.env.production`.
+2. Publique a stack e acesse `https://analytics.seu-dominio` com o login inicial `admin` / `umami`; altere a senha imediatamente.
+3. Crie o website para o domínio público do Ninar, copie seu UUID para `NEXT_PUBLIC_UMAMI_WEBSITE_ID` e recrie somente o serviço `web`.
+
+O painel de desenvolvimento fica em `http://localhost:3002`. A rota
+`/privacidade` explica a coleta para quem usa o produto.
+
 ### FastAPI + PyTorch
 
 O runtime de inferência fica isolado das dependências Node/NestJS. Isso permite

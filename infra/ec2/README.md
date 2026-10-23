@@ -16,8 +16,8 @@ documentação privada do ambiente, não neste repositório público.
 ## Configuração
 
 1. Crie o arquivo de ambiente fora do Git e preencha os valores do ambiente.
-2. Garanta que o proxy reverso encaminhe o frontend, a API e o endpoint de
-   storage para os serviços correspondentes da stack.
+2. Garanta que o proxy reverso encaminhe o frontend, a API, o endpoint de
+   storage e o painel de analytics para os serviços correspondentes da stack.
 3. Configure CORS, DNS e certificados no provedor responsável pelo domínio.
 4. Valide a configuração antes de subir os serviços:
 
@@ -32,6 +32,11 @@ documentação privada do ambiente, não neste repositório público.
    docker compose --env-file .env.production \
      -f docker-compose.production.yml up -d --build --remove-orphans
    ```
+
+   Na primeira publicação, acesse o domínio de analytics, entre com
+   `admin` / `umami`, altere a senha e crie o website do domínio público do
+   Ninar. Copie o UUID gerado para `NEXT_PUBLIC_UMAMI_WEBSITE_ID` e recrie o
+   serviço `web` para incluir o tracker.
 
 6. Confira o estado e os logs dos serviços antes de liberar o tráfego:
 

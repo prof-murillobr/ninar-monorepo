@@ -16,6 +16,38 @@ services:
     ports:
       - "6379:6379"
 
+  umami-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami_local
+    volumes:
+      - umami_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  umami:
+    image: docker.umami.is/umami-software/umami:3.4.1@sha256:e69d1a7932e9dab0fc523edc7be1f3a53f3c261f57856fc2167ae74a8fc022e8
+    init: true
+    environment:
+      DATABASE_URL: postgresql://umami:umami_local@umami-db:5432/umami
+      APP_SECRET: local-development-secret-change-in-production
+      TWO_FACTOR_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    ports:
+      - "3002:3000"
+    depends_on:
+      umami-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:3000/api/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   floci:
     image: floci/floci:1.5.21-compat
     user: "0:0"
@@ -94,6 +126,8 @@ services:
       context: ./apps/web
       args:
         NEXT_PUBLIC_API_URL: http://localhost:3001
+        NEXT_PUBLIC_UMAMI_HOST_URL: ${NEXT_PUBLIC_UMAMI_HOST_URL:-http://localhost:3002}
+        NEXT_PUBLIC_UMAMI_WEBSITE_ID: ${NEXT_PUBLIC_UMAMI_WEBSITE_ID:-}
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3001
     ports:
@@ -103,5 +137,6 @@ services:
 
 volumes:
   postgres_data:
+  umami_data:
   floci_data:
   hf_cache:

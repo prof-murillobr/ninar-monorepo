@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -99,6 +100,9 @@ const structuredData = {
     "As hipóteses são experimentais e não substituem orientação profissional de saúde.",
 };
 
+const umamiHostUrl = process.env.NEXT_PUBLIC_UMAMI_HOST_URL?.replace(/\/$/, "");
+const umamiWebsiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
@@ -111,6 +115,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
+        {umamiHostUrl && umamiWebsiteId && (
+          <Script
+            defer
+            src={`${umamiHostUrl}/script.js`}
+            data-website-id={umamiWebsiteId}
+            data-do-not-track="true"
+            strategy="afterInteractive"
+          />
+        )}
       </body>
     </html>
   );
